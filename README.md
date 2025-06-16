@@ -129,6 +129,8 @@ It will evaluate the weights saved inside `saved_policy`.
 
 Always be sure to be running the UE4 env before running training or evaluation, and that the settings are set correctly (and renamed to `settings.json`). If you want to modify the number of drones, you should modify the code.
 
+![Demo](imgs/3drones.gif)
+
 ## Training Maps
 
 > **Note:** The training maps used in this project are **~200 GB**.  
