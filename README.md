@@ -16,6 +16,7 @@ All code is placed under the `airsim` folder and assumes AirSim and UE4 are inst
 ```
 .
 ├── README.md
+├── imgs/                        # Images and gifs of the experiments
 ├── old_experiments/             # Old experiments for reference
 ├── single_agent/
 │   ├── environment.yml          # Conda environment for single-agent setup
@@ -90,7 +91,7 @@ All code is placed under the `airsim` folder and assumes AirSim and UE4 are inst
 
 ## Usage
 
-> **Important**: All coordinates, spawn positions, and environment parameters in the code must be adapted to your specific UE4 map. Since maps are not provided, ensure you update any hardcoded positions and settings to match the map you create.
+> **Important**: All coordinates, spawn positions, and environment parameters in the code must be adapted to your specific UE4 map. If you decide to create your own map, you must update any hard-coded positions and settings to match the map you create. If you want to use my maps, every drone will start from a random initial position along the same axis and will be trained to reach a point lying within a specified radius of the target asset.
 >
 * Launch training via:
 
@@ -133,8 +134,13 @@ Always be sure to be running the UE4 env before running training or evaluation, 
 
 ## Training Maps
 
-> **Note:** The training maps used in this project are **~200 GB**.  
+> **Note:** The training maps used in this project are **~50 GB**.  
 > They’re available on request; just let me know if you’d like a copy!
+> They include:
+> * A standard map populated with random assets.
+> * A map featuring NPCs that move randomly.
+> * A dense-forest map.
+> * A composite map combining all the characteristics above.
 
 ## Acknowledgments
 
