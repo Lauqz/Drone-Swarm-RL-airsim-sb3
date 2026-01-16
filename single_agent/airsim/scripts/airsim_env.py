@@ -1,3 +1,4 @@
+import supersuit as ss
 from . import airsim
 import os
 import gym
@@ -5,7 +6,19 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-os.environ['KMP_DUPLICATE_LIB_OK']='True'
+os.environ['KMP_DUPLICATE_LIB_OK'] ='True'
+
+
+def env(**kwargs):
+    env = AirSimDroneEnv(**kwargs)
+    env = ss.black_death_v3(env)
+    #env = ss.frame_stack_v2(env, 3)
+    env = ss.pettingzoo_env_to_vec_env_v1(env)
+    env = ss.concat_vec_envs_v1(env, 1, base_class="stable_baselines3")
+    return env
+
+
+petting_zoo = env
 
 
 class AirSimDroneEnv(gym.Env):
