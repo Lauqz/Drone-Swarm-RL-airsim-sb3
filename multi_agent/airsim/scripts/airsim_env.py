@@ -45,6 +45,8 @@ class AirSimDroneEnv(ParallelEnv, EzPickle):
         self.image_shape = image_shape
         self.input_mode = input_mode
         self.num = num_drones
+        # SuperSuit's MarkovVectorEnv reads this; PettingZoo expects it on every env.
+        self.render_mode = None
 
         # Init
         self.drone = airsim.MultirotorClient(ip=ip_address)
@@ -358,7 +360,7 @@ class AirSimDroneEnv(ParallelEnv, EzPickle):
         rgb_image_request = airsim.ImageRequest(
             0, airsim.ImageType.Scene, False, False)
         responses = self.drone.simGetImages([rgb_image_request], vehicle_name=name)
-        img1d = np.fromstring(responses[0].image_data_uint8, dtype=np.uint8)
+        img1d = np.frombuffer(responses[0].image_data_uint8, dtype=np.uint8)
         img2d = np.reshape(img1d, (responses[0].height, responses[0].width, 3)) 
 
         # Sometimes no image returns from api
