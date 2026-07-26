@@ -21,10 +21,10 @@ are local workarounds specific to this project.
 
 ### Submitted upstream
 
-| file | change | upstream |
-|---|---|---|
-| `utils/frame_stack.py`, `generic_wrappers/frame_stack.py` | `frame_stack_v1/v2` rejected `Dict` observation spaces, so a camera-plus-position observation could not be stacked without flattening it first | [SuperSuit#268](https://github.com/Farama-Foundation/SuperSuit/pull/268) |
-| `multiagent_wrappers/black_death.py` | `black_death_v3` asserted every observation space is a `Box`, because it builds a zero observation with `np.zeros_like(space.low)` | [SuperSuit#269](https://github.com/Farama-Foundation/SuperSuit/pull/269) |
+| file | change | needed for | upstream |
+|---|---|---|---|
+| `multiagent_wrappers/black_death.py` | `black_death_v3` asserted every observation space is a `Box`, because it builds a zero observation with `np.zeros_like(space.low)` | **the default `train.py` chain** | [SuperSuit#269](https://github.com/Farama-Foundation/SuperSuit/pull/269) |
+| `utils/frame_stack.py`, `generic_wrappers/frame_stack.py` | `frame_stack_v1/v2` rejected `Dict` observation spaces, so a camera-plus-position observation could not be stacked without flattening it first | only if the `frame_stack_v2` line in `scripts/airsim_env.py` is uncommented, which it is not by default | [SuperSuit#268](https://github.com/Farama-Foundation/SuperSuit/pull/268) |
 
 The upstream versions are recursive rather than copy-pasted, so `Dict` reuses the
 `Box` code path and nested `Dict`s work too. They were checked against the
