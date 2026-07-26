@@ -101,48 +101,21 @@ All code is placed under the `airsim` folder and assumes AirSim and UE4 are inst
 
 ## Library patches and upstream status
 
-The multi-agent setup needs a patched SuperSuit because two of its wrappers
-reject `Dict` observation spaces, which is what this project uses (each drone
-observes an RGB frame plus its own position).
+SuperSuit's `black_death_v3` and `frame_stack` reject `Dict` observation spaces,
+which is what this project uses (each drone sees an RGB frame plus its own
+position). Patched copies live in `modified_libs/`. Only the `black_death` patch
+is needed for the default `train.py` chain, since `frame_stack_v2` is commented
+out in `scripts/airsim_env.py`.
 
-Both gaps have been submitted upstream:
+Both fixes are submitted upstream as
+[SuperSuit#269](https://github.com/Farama-Foundation/SuperSuit/pull/269) and
+[SuperSuit#268](https://github.com/Farama-Foundation/SuperSuit/pull/268). Once
+merged, `modified_libs/supersuit` can be dropped.
 
-| wrapper | needed for | upstream PR |
-|---|---|---|
-| `black_death_v3` | **the default `train.py` chain**. Without it the run stops at `black_death_v3` with `observation spaces for black death must be Box spaces` | [SuperSuit#269](https://github.com/Farama-Foundation/SuperSuit/pull/269) |
-| `frame_stack_v1/v2` | only if the `frame_stack_v2` line in `scripts/airsim_env.py` is uncommented; it is disabled by default | [SuperSuit#268](https://github.com/Farama-Foundation/SuperSuit/pull/268) |
-
-Measured against stock SuperSuit 3.11:
-
-| SuperSuit | default chain | with `frame_stack_v2` |
-|---|---|---|
-| unpatched | fails | fails |
-| #269 only | **works** | fails |
-| #268 only | fails | fails |
-| both | works | works |
-
-Once both merge, `modified_libs/supersuit` becomes unnecessary and the project can
-run against a released SuperSuit.
-
-### Verified against current versions
-
-The environment was re-checked against much newer packages than the ones pinned
-in `environment.yml`:
-
-* passes PettingZoo's own `parallel_api_test` on **PettingZoo 1.26.1**
-* the full wrapper chain from `train.py`
-  (`black_death_v3` → `pettingzoo_env_to_vec_env_v1` → `concat_vec_envs_v1`)
-  runs on **SuperSuit 3.11** with the two patches above, producing
-  `{'cam': (3, 84, 84, 9), 'pos': (3, 9)}` with `frame_stack_v2(3)`
-* runs on **NumPy 2.x** and **Gymnasium 1.3**
-
-Two source changes were required for this and are already applied:
-`np.fromstring` → `np.frombuffer` (the binary mode was removed in NumPy 2.0) and
-an explicit `self.render_mode = None` (recent SuperSuit reads it).
-
-Caveat: these checks used a mocked AirSim client, so they cover the
-PettingZoo/SuperSuit API surface, not a full training run against the simulator.
-`environment.yml` still pins the original, known-good versions.
+The environment also runs on current versions (PettingZoo 1.26.1, SuperSuit 3.11,
+NumPy 2.x, Gymnasium 1.3) and passes `parallel_api_test` there, though
+`environment.yml` still pins the original known-good set. See
+`modified_libs/PATCHES.md` for the details.
 
 ## Usage
 

@@ -31,6 +31,33 @@ The upstream versions are recursive rather than copy-pasted, so `Dict` reuses th
 implementation here and produce identical results on every case this one
 supports. Once both merge, `supersuit` can be dropped from this folder.
 
+Which patch is actually needed, measured against stock SuperSuit 3.11:
+
+| SuperSuit | default `train.py` chain | with `frame_stack_v2` |
+|---|---|---|
+| unpatched | fails | fails |
+| #269 only | works | fails |
+| #268 only | fails | fails |
+| both | works | works |
+
+Unpatched, the run stops at `black_death_v3` with
+`observation spaces for black death must be Box spaces`.
+
+### Checked against current versions
+
+With both patches the env passes `pettingzoo.test.parallel_api_test` on PettingZoo
+1.26.1, and the full chain
+(`black_death_v3` -> `pettingzoo_env_to_vec_env_v1` -> `concat_vec_envs_v1`) runs
+on SuperSuit 3.11, NumPy 2.x and Gymnasium 1.3, giving
+`{'cam': (3, 84, 84, 9), 'pos': (3, 9)}` with `frame_stack_v2(3)`.
+
+Two source fixes were needed and are already applied: `np.fromstring` ->
+`np.frombuffer().copy()` (binary mode removed in NumPy 2.0) and an explicit
+`self.render_mode = None` (recent SuperSuit reads it).
+
+These checks used a mocked AirSim client, so they cover the PettingZoo/SuperSuit
+API surface rather than a full training run against the simulator.
+
 ### Local workarounds, not upstreamable
 
 | file | change | note |
