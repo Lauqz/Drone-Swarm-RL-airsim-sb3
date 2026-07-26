@@ -7,7 +7,7 @@
 This repository contains the code and environments for my thesis on reinforcement learning of drone swarms using Unreal Engine 4 and Microsoft AirSim conducted at AIST, Tsukuba. It includes two separate implementations:
 
 * **Single-Agent**: Training a single drone using PPO in a custom UE4 using StableBaseline3 and Gymnasium.
-* **Multi-Agent**: Training a swarm of drones using PPO with modified versions of PettingZoo and Supersuit libraries to support multi-agent stacked observations in case of RGB camera.
+* **Multi-Agent**: Training a swarm of drones using PPO with a patched SuperSuit, to support stacked `Dict` observations (RGB camera plus position) across multiple agents. See [Library patches and upstream status](#library-patches-and-upstream-status).
 
 All code is placed under the `airsim` folder and assumes AirSim and UE4 are installed following the [official AirSim documentation](https://microsoft.github.io/AirSim/).
 
@@ -26,7 +26,10 @@ All code is placed under the `airsim` folder and assumes AirSim and UE4 are inst
 │       └── ...
 ├── multi_agent/
 │   ├── environment.yml          # Conda environment for multi-agent setup
-│   ├── modified_libs/           # Modified packages (e.g., PettingZoo, SuperSuit)
+│   ├── modified_libs/           # Patched packages: SuperSuit, Stable-Baselines3, msgpackrpc
+│   │   └── PATCHES.md           # What changed in each file, and why
+│   ├── archive/
+│   │   └── unmodified_libs/     # Vendored but never modified; install from PyPI instead
 │   ├── settings/                # Multi-drone configurations for AirSim
 │       └── ...
 │   └── airsim/                  # Multi-agent code to place inside AirSim PythonClient folder
@@ -74,13 +77,20 @@ All code is placed under the `airsim` folder and assumes AirSim and UE4 are inst
    conda env create -f environment.yml     # Python 3.11.3 
    conda activate deeprl_multi
    ```
-3. Copy the modified libs into your Python path, or install in editable mode:
+3. Install the patched libraries in editable mode:
 
    ```bash
-   pip install -e modified_libs/pettingzoo
    pip install -e modified_libs/supersuit
-   ... # Unfortunately, I can't remember which packages I modified.  I advice you to install all of them to avoid bugs.
+   pip install -e modified_libs/stable_baselines3
+   pip install -e modified_libs/msgpackrpc
    ```
+
+   Only these three are patched. Every vendored package was diffed against the
+   version pinned in `environment.yml`: `pettingzoo`, `msgpack` and `gymnasium`
+   turned out to be unmodified, so they moved to
+   `archive/unmodified_libs/` and should be installed from PyPI as normal.
+
+   `modified_libs/PATCHES.md` documents exactly what changed in each file and why.
 4. **Place your custom `settings.json`** (with your desired number of drones) *into the folder created by AirSim at `Documents/AirSim` on Windows or `~/Documents/AirSim` on Linux*, replacing the default settings file ([microsoft.github.io](https://microsoft.github.io/AirSim/settings/)).
 5. Copy the `airsim` folder into the AirSim Python Client folder:
 
@@ -88,6 +98,42 @@ All code is placed under the `airsim` folder and assumes AirSim and UE4 are inst
    cp -r airsim /path/to/AirSim/PythonClient
    ```
 6. Open UE4 and run your project; the multi-drone config in `settings.json` will enable different sized swarm spawn.
+
+## Library patches and upstream status
+
+The multi-agent setup needs a patched SuperSuit because two of its wrappers
+rejected `Dict` observation spaces, which is what this project uses (each drone
+observes an RGB frame plus its own position).
+
+Both gaps have been submitted upstream:
+
+| what | upstream PR |
+|---|---|
+| `frame_stack_v1/v2` accepting `Dict` observation spaces | [Farama-Foundation/SuperSuit#268](https://github.com/Farama-Foundation/SuperSuit/pull/268) |
+| `black_death_v3` accepting `Dict` observation spaces | [Farama-Foundation/SuperSuit#269](https://github.com/Farama-Foundation/SuperSuit/pull/269) |
+
+Once both merge, `modified_libs/supersuit` becomes unnecessary and the project can
+run against a released SuperSuit.
+
+### Verified against current versions
+
+The environment was re-checked against much newer packages than the ones pinned
+in `environment.yml`:
+
+* passes PettingZoo's own `parallel_api_test` on **PettingZoo 1.26.1**
+* the full wrapper chain from `train.py`
+  (`black_death_v3` → `pettingzoo_env_to_vec_env_v1` → `concat_vec_envs_v1`)
+  runs on **SuperSuit 3.11** with the two patches above, producing
+  `{'cam': (3, 84, 84, 9), 'pos': (3, 9)}` with `frame_stack_v2(3)`
+* runs on **NumPy 2.x** and **Gymnasium 1.3**
+
+Two source changes were required for this and are already applied:
+`np.fromstring` → `np.frombuffer` (the binary mode was removed in NumPy 2.0) and
+an explicit `self.render_mode = None` (recent SuperSuit reads it).
+
+Caveat: these checks used a mocked AirSim client, so they cover the
+PettingZoo/SuperSuit API surface, not a full training run against the simulator.
+`environment.yml` still pins the original, known-good versions.
 
 ## Usage
 
