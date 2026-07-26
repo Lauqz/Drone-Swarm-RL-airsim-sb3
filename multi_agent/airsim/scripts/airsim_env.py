@@ -360,7 +360,11 @@ class AirSimDroneEnv(ParallelEnv, EzPickle):
         rgb_image_request = airsim.ImageRequest(
             0, airsim.ImageType.Scene, False, False)
         responses = self.drone.simGetImages([rgb_image_request], vehicle_name=name)
-        img1d = np.frombuffer(responses[0].image_data_uint8, dtype=np.uint8)
+        # .copy() because np.frombuffer returns a read-only view, whereas the
+        # np.fromstring it replaces returned a writable array. Without it this
+        # function would return a read-only array on the normal path and a
+        # writable one from the except branch below.
+        img1d = np.frombuffer(responses[0].image_data_uint8, dtype=np.uint8).copy()
         img2d = np.reshape(img1d, (responses[0].height, responses[0].width, 3)) 
 
         # Sometimes no image returns from api
