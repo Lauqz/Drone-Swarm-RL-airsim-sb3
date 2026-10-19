@@ -9,6 +9,12 @@ This repository contains the code and environments for my thesis on reinforcemen
 * **Single-Agent**: Training a single drone using PPO in a custom UE4 using StableBaseline3 and Gymnasium.
 * **Multi-Agent**: Training a swarm of drones using PPO with a patched SuperSuit, to support stacked `Dict` observations (RGB camera plus position) across multiple agents. See [Library patches and upstream status](#library-patches-and-upstream-status).
 
+The multi-agent task also ships with a **local simulator backend**
+(`multi_agent/local/`) that needs no UE4 or AirSim: same PettingZoo interface,
+reward logic, camera model and a proportional reproduction of the default map,
+with headless training on WSL/Linux and an optional live browser viewer.
+See [multi_agent/local/README.md](multi_agent/local/README.md).
+
 All code is placed under the `airsim` folder and assumes AirSim and UE4 are installed following the [official AirSim documentation](https://microsoft.github.io/AirSim/).
 
 ## Repository Structure
@@ -32,7 +38,9 @@ All code is placed under the `airsim` folder and assumes AirSim and UE4 are inst
 │   │   └── unmodified_libs/     # Vendored but never modified; install from PyPI instead
 │   ├── settings/                # Multi-drone configurations for AirSim
 │       └── ...
-│   └── airsim/                  # Multi-agent code to place inside AirSim PythonClient folder
+│   ├── airsim/                  # Multi-agent code to place inside AirSim PythonClient folder
+│       └── ...
+│   └── local/                   # Local simulator backend (no UE4/AirSim), see its README
 │       └── ...
 └── LICENSE
 ```

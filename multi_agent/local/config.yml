@@ -1,0 +1,22 @@
+# Modes: 1) depth, 2) single_rgb, 3) multi_rgb
+train_mode: "single_rgb"
+test_mode: "single_rgb"
+
+# Number drones
+num_drones: 3
+
+# ---- local-sim specific ----
+# Independent arenas stepped in parallel (AirSim was limited to 1 simulator).
+num_vec_envs: 1
+
+# Live browser view at http://localhost:<viewer_port> (works from Windows).
+# Headless when false; off by default for training, on by default in evaluate.py.
+viewer: false
+viewer_port: 8777
+
+# Camera supersampling: NxN rays per pixel (resolution stays 84x84).
+# 2 = smooth, detailed frames (default). 1 = ~3x faster rendering, blockier.
+samples: 2
+
+# Print the per-step debug dump like the AirSim env did.
+verbose: false

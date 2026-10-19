@@ -20,6 +20,9 @@ tb_logs/
 *.zip
 !saved_policy/*.zip
 
+# Test caches
+.pytest_cache/
+
 # Editors / OS
 .vscode/
 .idea/

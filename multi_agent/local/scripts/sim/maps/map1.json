@@ -1,0 +1,651 @@
+{
+  "name": "map1",
+  "comment": "Reconstruction of the default UE4 training map from imgs/trajectory_map1_3drones.png. Plan positions were recovered photogrammetrically: the floor-plane homography was fitted from the left/right/top wall-base lines plus the near-wall cap line (vanishing points V_x, V_y), scaled by the known target position (26.8, 3.9) from the legacy env_config.yml, and the y-scale fixed by requiring the floor tiles to be square (they come out 3.45 m). Every obstacle footprint below was read by inverse-projecting its floor-contact pixels through that homography, so plan positions and proportions match the screenshot to roughly +-0.5 m. Heights are visual estimates (single-view height recovery was not reliable) chosen to match the image and to straddle the drones' -8..-1 m spawn band. Coordinates are NED metres: x toward the target, y right, z down (negative = altitude).",
+  "arena": {
+    "x_min": -1.5,
+    "x_max": 27.2,
+    "y_min": -20.0,
+    "y_max": 20.0,
+    "wall_height": 12.0,
+    "wall_thickness": 0.8,
+    "cap": 0.45,
+    "comment": "Back wall sits 1.5 m behind the spawn line. Photogrammetry puts the left wall essentially at x=0, but the drones spawn at x=0 with a 0.35 m body radius, so it is set back just enough to keep the spawn band clear."
+  },
+  "ceiling": {
+    "height": 12.0,
+    "material": "ceiling",
+    "comment": "Invisible from outside (the viewer never draws it, so the arena stays readable from above) but fully opaque to the drones' cameras and solid to collisions, exactly like the capture ceiling in the UE map. Textured like the floor."
+  },
+  "spawn": {
+    "x": 0.0,
+    "y_range": [
+      -18.0,
+      18.0
+    ],
+    "z_range": [
+      -8.0,
+      -1.0
+    ]
+  },
+  "objects": {
+    "target": {
+      "pos": [
+        26.8,
+        3.9,
+        -1.0
+      ],
+      "radius": 1.0,
+      "material": "target",
+      "collidable": false
+    }
+  },
+  "tile_size": 3.45,
+  "boxes": [
+    {
+      "name": "partition_1",
+      "center": [
+        7.7,
+        3.8,
+        -3.25
+      ],
+      "size": [
+        0.7,
+        25.6,
+        6.5
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        0
+      ],
+      "material": "stone",
+      "cap": 0.4
+    },
+    {
+      "name": "partition_2",
+      "center": [
+        18.5,
+        -5.25,
+        -3.25
+      ],
+      "size": [
+        0.7,
+        26.9,
+        6.5
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        0
+      ],
+      "material": "stone",
+      "cap": 0.4
+    },
+    {
+      "name": "partition_3",
+      "center": [
+        18.4,
+        16.0,
+        -3.25
+      ],
+      "size": [
+        0.7,
+        8.0,
+        6.5
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        0
+      ],
+      "material": "stone",
+      "cap": 0.4
+    },
+    {
+      "name": "pillar_A",
+      "center": [
+        4.7,
+        -4.5,
+        -4.0
+      ],
+      "size": [
+        2.6,
+        2.2,
+        8.0
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        -20
+      ],
+      "material": "stone",
+      "cap": 0.35
+    },
+    {
+      "name": "pillar_E",
+      "center": [
+        11.5,
+        -8.8,
+        -3.5
+      ],
+      "size": [
+        2.6,
+        3.0,
+        7.0
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        10
+      ],
+      "material": "stone",
+      "cap": 0.35
+    },
+    {
+      "name": "pillar_F",
+      "center": [
+        12.5,
+        15.0,
+        -3.0
+      ],
+      "size": [
+        2.5,
+        2.5,
+        6.0
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        -15
+      ],
+      "material": "stone",
+      "cap": 0.35
+    },
+    {
+      "name": "pillar_J",
+      "center": [
+        14.75,
+        -17.0,
+        -3.5
+      ],
+      "size": [
+        1.5,
+        1.5,
+        7.0
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        0
+      ],
+      "material": "stone",
+      "cap": 0.3
+    },
+    {
+      "name": "block_B",
+      "center": [
+        4.1,
+        16.7,
+        -0.9
+      ],
+      "size": [
+        4.0,
+        1.8,
+        1.8
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        -40
+      ],
+      "material": "stone",
+      "cap": 0.28
+    },
+    {
+      "name": "ramp_yellow",
+      "center": [
+        11.57,
+        1.57,
+        -0.09
+      ],
+      "size": [
+        1.8,
+        16.0,
+        0.18
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        -5
+      ],
+      "material": "yellow"
+    },
+    {
+      "name": "bench",
+      "center": [
+        17.55,
+        0.8,
+        -0.55
+      ],
+      "size": [
+        0.9,
+        2.4,
+        1.1
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        0
+      ],
+      "material": "bench"
+    },
+    {
+      "name": "rock_1",
+      "center": [
+        3.69,
+        0.06,
+        -0.18
+      ],
+      "size": [
+        3.0,
+        2.4,
+        0.36
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        15
+      ],
+      "material": "rock"
+    },
+    {
+      "name": "rock_2",
+      "center": [
+        15.4,
+        -2.5,
+        -0.22
+      ],
+      "size": [
+        3.4,
+        3.0,
+        0.45
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        -10
+      ],
+      "material": "rock"
+    },
+    {
+      "name": "marker_white",
+      "center": [
+        15.16,
+        9.26,
+        -0.15
+      ],
+      "size": [
+        0.7,
+        0.7,
+        0.3
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        0
+      ],
+      "material": "white"
+    },
+    {
+      "name": "marker_yellow",
+      "center": [
+        15.03,
+        11.07,
+        -0.18
+      ],
+      "size": [
+        0.9,
+        0.9,
+        0.36
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        0
+      ],
+      "material": "yellow"
+    },
+    {
+      "name": "pole_1",
+      "center": [
+        9.29,
+        -7.25,
+        -3.63
+      ],
+      "size": [
+        0.22,
+        0.22,
+        8.0
+      ],
+      "rpy_deg": [
+        0,
+        25,
+        0
+      ],
+      "material": "pole"
+    },
+    {
+      "name": "pole_2",
+      "center": [
+        20.26,
+        -17.6,
+        -3.76
+      ],
+      "size": [
+        0.22,
+        0.22,
+        8.0
+      ],
+      "rpy_deg": [
+        -22,
+        0,
+        0
+      ],
+      "material": "pole"
+    },
+    {
+      "name": "pole_3",
+      "center": [
+        8.4,
+        17.1,
+        -3.76
+      ],
+      "size": [
+        0.22,
+        0.22,
+        8.0
+      ],
+      "rpy_deg": [
+        20,
+        0,
+        0
+      ],
+      "material": "pole"
+    },
+    {
+      "name": "pole_4",
+      "center": [
+        18.0,
+        12.48,
+        -3.46
+      ],
+      "size": [
+        0.22,
+        0.22,
+        7.5
+      ],
+      "rpy_deg": [
+        0,
+        -28,
+        0
+      ],
+      "material": "pole"
+    },
+    {
+      "name": "rubble_1",
+      "center": [
+        6.2,
+        -14.5,
+        -0.22
+      ],
+      "size": [
+        1.4,
+        1.1,
+        0.45
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        25
+      ],
+      "material": "rock"
+    },
+    {
+      "name": "rubble_2",
+      "center": [
+        22.4,
+        -9.0,
+        -0.18
+      ],
+      "size": [
+        1.1,
+        0.9,
+        0.36
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        -35
+      ],
+      "material": "rock"
+    },
+    {
+      "name": "rubble_3",
+      "center": [
+        9.6,
+        9.4,
+        -0.16
+      ],
+      "size": [
+        0.95,
+        0.8,
+        0.32
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        10
+      ],
+      "material": "rock"
+    },
+    {
+      "name": "rubble_4",
+      "center": [
+        23.6,
+        14.2,
+        -0.2
+      ],
+      "size": [
+        1.25,
+        1.0,
+        0.4
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        50
+      ],
+      "material": "rock"
+    },
+    {
+      "name": "crate_1",
+      "center": [
+        2.6,
+        -16.8,
+        -0.55
+      ],
+      "size": [
+        1.1,
+        1.1,
+        1.1
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        12
+      ],
+      "material": "bench"
+    },
+    {
+      "name": "crate_2",
+      "center": [
+        24.6,
+        -2.2,
+        -0.45
+      ],
+      "size": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "rpy_deg": [
+        0,
+        0,
+        -18
+      ],
+      "material": "bench"
+    }
+  ],
+  "pilasters": {
+    "comment": "Buttresses along the far and side walls; they give the stone walls vertical relief so the 84x84 camera sees structure rather than flat planes. The back (spawn) wall gets none: it is never in view and they would crowd the spawn line.",
+    "depth": 0.5,
+    "width": 1.3,
+    "height": 12.0,
+    "spacing": 6.9,
+    "material": "stone",
+    "skip_back_wall": true
+  },
+  "materials": {
+    "stone": {
+      "color": [
+        186,
+        195,
+        202
+      ],
+      "pattern": "block",
+      "rough": 0.9
+    },
+    "cap": {
+      "color": [
+        238,
+        238,
+        234
+      ],
+      "pattern": "smooth",
+      "rough": 0.5
+    },
+    "rock": {
+      "color": [
+        150,
+        162,
+        162
+      ],
+      "pattern": "cobble",
+      "rough": 1.0
+    },
+    "bench": {
+      "color": [
+        214,
+        186,
+        104
+      ],
+      "pattern": "plank",
+      "rough": 0.7
+    },
+    "yellow": {
+      "color": [
+        224,
+        200,
+        96
+      ],
+      "pattern": "plank",
+      "rough": 0.7
+    },
+    "white": {
+      "color": [
+        240,
+        240,
+        238
+      ],
+      "pattern": "smooth",
+      "rough": 0.4
+    },
+    "pole": {
+      "color": [
+        84,
+        60,
+        44
+      ],
+      "pattern": "bark",
+      "rough": 1.0
+    },
+    "target": {
+      "color": [
+        222,
+        42,
+        42
+      ],
+      "pattern": "smooth",
+      "emissive": true
+    },
+    "floor": {
+      "color": [
+        140,
+        168,
+        190
+      ],
+      "pattern": "tile",
+      "rough": 0.8
+    },
+    "ceiling": {
+      "color": [
+        178,
+        202,
+        221
+      ],
+      "pattern": "tile",
+      "rough": 0.8
+    },
+    "drone": {
+      "color": [
+        52,
+        52,
+        58
+      ],
+      "pattern": "smooth",
+      "rough": 0.6
+    }
+  },
+  "sky": {
+    "horizon": [
+      226,
+      236,
+      244
+    ],
+    "zenith": [
+      154,
+      196,
+      232
+    ]
+  },
+  "haze": {
+    "color": [
+      220,
+      234,
+      244
+    ],
+    "half_distance": 22.0,
+    "comment": "Strong aerial perspective: the reference FPV frame washes out almost completely by the far wall. half_distance is the range at which a surface is 50% blended into the haze colour."
+  },
+  "exposure": {
+    "gain": 1.15,
+    "lift": 0.12,
+    "comment": "The UE capture is bright with lifted blacks and low contrast; matching it keeps the CNN input statistics close to the AirSim runs."
+  },
+  "sun_dir": [
+    0.32,
+    -0.28,
+    0.9
+  ],
+  "ambient": 0.7
+}

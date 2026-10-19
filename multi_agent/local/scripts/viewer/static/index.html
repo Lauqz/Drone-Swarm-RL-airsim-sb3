@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Drone Swarm — local sim</title>
+<style>
+  body { margin: 0; background: #10141a; color: #cdd6e4; font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #scene { position: absolute; inset: 0; }
+  #hud { position: absolute; top: 10px; left: 10px; background: rgba(10,14,20,.78); border: 1px solid #2a3442;
+         border-radius: 8px; padding: 10px 14px; min-width: 230px; }
+  #hud h1 { font-size: 13px; margin: 0 0 6px; color: #8ab4f8; font-weight: 600; }
+  #hud table { border-collapse: collapse; width: 100%; }
+  #hud td { padding: 1px 8px 1px 0; white-space: nowrap; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+  #cams { position: absolute; bottom: 10px; left: 10px; display: flex; gap: 8px; }
+  .cam { text-align: center; background: rgba(10,14,20,.78); border: 1px solid #2a3442; border-radius: 6px; padding: 5px; }
+  .cam img { width: 126px; height: 126px; image-rendering: pixelated; display: block; border-radius: 3px; }
+  .cam span { font-size: 11px; }
+  #status { position: absolute; top: 10px; right: 10px; background: rgba(10,14,20,.78); border: 1px solid #2a3442;
+            border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+  #help { position: absolute; bottom: 10px; right: 10px; font-size: 11px; color: #5b6b80; }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div id="hud"><h1>Drone Swarm — local sim</h1><div id="meta">waiting for data…</div><table id="rows"></table></div>
+<div id="status">connecting…</div>
+<div id="cams"></div>
+<div id="help">drag: orbit &nbsp; wheel: zoom &nbsp; T: toggle trails</div>
+<script src="/three.min.js"></script>
+<script>
+"use strict";
+// NED (x fwd, y right, z down) -> three.js (y up): [x, -z, y]
+const N2T = p => new THREE.Vector3(p[0], -p[2], p[1]);
+const DRONE_COLORS = [0xff4040, 0x30d158, 0x3a82f7, 0xffd60a, 0xbf5af2, 0x64d2ff];
+
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.getElementById("scene").appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x10141a);
+scene.fog = new THREE.Fog(0x10141a, 80, 220);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 500);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(-20, 40, -15);
+scene.add(sun);
+
+// ---- manual orbit (no OrbitControls dependency) ----
+let center = new THREE.Vector3(13, 0, 0);
+let theta = -2.1, phi = 0.9, radius = 48, dragging = false, px = 0, py = 0;
+function placeCamera() {
+  camera.position.set(
+    center.x + radius * Math.cos(phi) * Math.cos(theta),
+    center.y + radius * Math.sin(phi),
+    center.z + radius * Math.cos(phi) * Math.sin(theta));
+  camera.lookAt(center);
+}
+addEventListener("mousedown", e => { if (e.target === renderer.domElement) { dragging = true; px = e.clientX; py = e.clientY; }});
+addEventListener("mouseup", () => dragging = false);
+addEventListener("mousemove", e => {
+  if (!dragging) return;
+  theta += (e.clientX - px) * 0.005; phi += (e.clientY - py) * 0.005;
+  phi = Math.max(0.05, Math.min(1.5, phi)); px = e.clientX; py = e.clientY; placeCamera();
+});
+addEventListener("wheel", e => { radius = Math.max(8, Math.min(180, radius * (1 + e.deltaY * 0.001))); placeCamera(); });
+addEventListener("resize", () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+placeCamera();
+
+// ---- build static scene from the same map JSON the sim uses ----
+let mapData = null;
+fetch("/map").then(r => r.json()).then(m => {
+  mapData = m;
+  const a = m.arena;
+  center = new THREE.Vector3((a.x_min + a.x_max)/2, 0, (a.y_min + a.y_max)/2);
+  placeCamera();
+
+  const floorMat = new THREE.MeshLambertMaterial({color: rgb(m.materials.floor.color)});
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(a.x_max - a.x_min, a.y_max - a.y_min), floorMat);
+  floor.rotation.x = -Math.PI/2;
+  floor.position.set(center.x, 0, center.z);
+  scene.add(floor);
+  const grid = new THREE.GridHelper(Math.max(a.x_max-a.x_min, a.y_max-a.y_min), 20, 0x3a4656, 0x222c3a);
+  grid.position.set(center.x, 0.02, center.z);
+  scene.add(grid);
+
+  // outer walls, drawn low & translucent so the inside stays visible
+  const wallMat = new THREE.MeshLambertMaterial({color: 0x44525f, transparent: true, opacity: 0.35});
+  const wh = 4, t = a.wall_thickness;
+  for (const [cx, cz, sx, sz] of [
+    [a.x_min - t/2, center.z, t, a.y_max - a.y_min],
+    [a.x_max + t/2, center.z, t, a.y_max - a.y_min],
+    [center.x, a.y_min - t/2, a.x_max - a.x_min, t],
+    [center.x, a.y_max + t/2, a.x_max - a.x_min, t]]) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(sx, wh, sz), wallMat);
+    w.position.set(cx, wh/2, cz);
+    scene.add(w);
+  }
+
+  // Same cap/pilaster expansion as scripts/sim/world.py, so the view and the
+  // physics can never disagree. The capture ceiling is deliberately NOT drawn:
+  // it is invisible from outside so the arena stays readable from above.
+  const boxes = [];
+  const addBox = (name, center, size, rpy, material, cap) => {
+    boxes.push({name, center, size, rpy_deg: rpy, material});
+    if (cap) {
+      const [r, p, y] = rpy.map(d => d*Math.PI/180);
+      // local -z (up in NED) after intrinsic ZYX
+      const up = [
+        Math.cos(y)*Math.sin(p)*Math.cos(r) + Math.sin(y)*Math.sin(r),
+        Math.sin(y)*Math.sin(p)*Math.cos(r) - Math.cos(y)*Math.sin(r),
+        Math.cos(p)*Math.cos(r)].map(v => -v);
+      const off = size[2]/2 + cap/2;
+      boxes.push({name: name+"_cap",
+                  center: center.map((c,i) => c + up[i]*off),
+                  size: [size[0]+0.18, size[1]+0.18, cap],
+                  rpy_deg: rpy, material: "cap"});
+    }
+  };
+  for (const b of m.boxes) addBox(b.name, b.center, b.size, b.rpy_deg||[0,0,0], b.material, b.cap);
+  const pil = m.pilasters;
+  if (pil) {
+    const {depth: pd, width: pw, height: ph, spacing: sp} = pil;
+    const z = -ph/2;
+    for (let yy = a.y_min+sp; yy < a.y_max-sp/2; yy += sp) {
+      if (!pil.skip_back_wall) addBox("pil", [a.x_min+pd/2, yy, z], [pd, pw, ph], [0,0,0], pil.material);
+      addBox("pil", [a.x_max-pd/2, yy, z], [pd, pw, ph], [0,0,0], pil.material);
+    }
+    for (let xx = a.x_min+sp; xx < a.x_max-sp/2; xx += sp) {
+      addBox("pil", [xx, a.y_min+pd/2, z], [pw, pd, ph], [0,0,0], pil.material);
+      addBox("pil", [xx, a.y_max-pd/2, z], [pw, pd, ph], [0,0,0], pil.material);
+    }
+  }
+  for (const b of boxes) {
+    const mat = new THREE.MeshLambertMaterial({color: rgb(m.materials[b.material].color)});
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.size[0], b.size[2], b.size[1]), mat);
+    mesh.position.copy(N2T(b.center));
+    const [r, p, y] = (b.rpy_deg || [0,0,0]).map(d => d*Math.PI/180);
+    // NED intrinsic ZYX (yaw,pitch,roll) -> three axes (x, y=up=-z_ned, z=y_ned)
+    mesh.rotation.set(0, -y, 0);
+    mesh.rotateZ(-p);
+    mesh.rotateX(r);
+    scene.add(mesh);
+  }
+
+  const tgt = m.objects.target;
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(tgt.radius, 24, 16),
+    new THREE.MeshBasicMaterial({color: rgb(m.materials.target.color)}));
+  sphere.position.copy(N2T(tgt.pos));
+  scene.add(sphere);
+  // success radius ring on the floor
+  const ring = new THREE.Mesh(new THREE.RingGeometry(11.8, 12, 64),
+    new THREE.MeshBasicMaterial({color: 0xff5050, transparent: true, opacity: 0.35, side: THREE.DoubleSide}));
+  ring.rotation.x = -Math.PI/2;
+  ring.position.set(tgt.pos[0], 0.05, tgt.pos[1]);
+  scene.add(ring);
+});
+const rgb = c => (c[0] << 16) | (c[1] << 8) | c[2];
+
+// ---- dynamic state ----
+const drones = {};  // name -> {mesh, trail, pts}
+let showTrails = true, lastEpisode = -1;
+const TRAIL_MAX = 2000;
+addEventListener("keydown", e => { if (e.key === "t" || e.key === "T") {
+  showTrails = !showTrails;
+  for (const d of Object.values(drones)) d.trail.visible = showTrails;
+}});
+
+function getDrone(name, idx) {
+  if (drones[name]) return drones[name];
+  const color = DRONE_COLORS[idx % DRONE_COLORS.length];
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 12),
+    new THREE.MeshLambertMaterial({color}));
+  scene.add(mesh);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(TRAIL_MAX*3), 3));
+  geo.setDrawRange(0, 0);
+  const trail = new THREE.Line(geo, new THREE.LineBasicMaterial({color, transparent: true, opacity: 0.8}));
+  trail.frustumCulled = false;
+  scene.add(trail);
+  const camBox = document.createElement("div");
+  camBox.className = "cam";
+  camBox.innerHTML = `<img><span style="color:#${color.toString(16).padStart(6,"0")}">${name}</span>`;
+  document.getElementById("cams").appendChild(camBox);
+  drones[name] = {mesh, trail, pts: 0, img: camBox.querySelector("img"), color};
+  return drones[name];
+}
+
+function update(state) {
+  if (state.episode !== lastEpisode) {
+    lastEpisode = state.episode;
+    for (const d of Object.values(drones)) { d.pts = 0; d.trail.geometry.setDrawRange(0, 0); }
+  }
+  const names = Object.keys(state.drones);
+  const rows = [];
+  names.forEach((name, idx) => {
+    const s = state.drones[name];
+    const d = getDrone(name, idx);
+    d.mesh.position.copy(N2T(s.pos));
+    d.mesh.material.opacity = s.done ? 0.3 : 1.0;
+    d.mesh.material.transparent = !!s.done;
+    if (!s.done && d.pts < TRAIL_MAX) {
+      const arr = d.trail.geometry.attributes.position.array;
+      const v = N2T(s.pos);
+      arr[d.pts*3] = v.x; arr[d.pts*3+1] = v.y; arr[d.pts*3+2] = v.z;
+      d.pts++;
+      d.trail.geometry.setDrawRange(0, d.pts);
+      d.trail.geometry.attributes.position.needsUpdate = true;
+    }
+    if (state.cams && state.cams[name]) d.img.src = "data:image/jpeg;base64," + state.cams[name];
+    const flag = s.collision ? "💥" : (s.obj === 1 ? "🎯" : (s.done ? "⏹" : "✈"));
+    rows.push(`<tr><td><span class="dot" style="background:#${d.color.toString(16).padStart(6,"0")}"></span>${name}</td>` +
+      `<td>${flag}</td><td style="text-align:right">${s.reward.toFixed(1)}</td>` +
+      `<td style="color:#7d8fa8">(${s.pos.map(x => x.toFixed(1)).join(", ")})</td></tr>`);
+  });
+  document.getElementById("meta").innerHTML = `episode <b>${state.episode}</b> &nbsp; step <b>${state.step}</b>/100`;
+  document.getElementById("rows").innerHTML = rows.join("");
+}
+
+// ---- SSE ----
+const status = document.getElementById("status");
+function connect() {
+  const es = new EventSource("/events");
+  es.onopen = () => { status.textContent = "● live"; status.style.color = "#30d158"; };
+  es.onmessage = e => update(JSON.parse(e.data));
+  es.onerror = () => {
+    status.textContent = "○ reconnecting…"; status.style.color = "#ff9f0a";
+    es.close(); setTimeout(connect, 1500);
+  };
+}
+connect();
+
+(function loop() { requestAnimationFrame(loop); renderer.render(scene, camera); })();
+</script>
+</body>
+</html>
