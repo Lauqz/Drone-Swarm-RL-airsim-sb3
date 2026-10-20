@@ -28,3 +28,6 @@ tb_logs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local-sim comparison runs
+multi_agent/local/runs/

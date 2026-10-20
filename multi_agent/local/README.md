@@ -55,6 +55,38 @@ Settings live in `config.yml`. Extra keys compared to the AirSim variant:
 - `samples`: camera supersampling (rays per pixel = samples²).
 - `verbose`: restores the original per-step debug printing.
 
+Keys shared with the AirSim variant (same defaults in both `config.yml`):
+
+- `prev_action_obs`: adds the previously executed velocity command as a
+  `prev_act` observation key. Off by default so the observation space, and
+  therefore old saved policies, stay compatible.
+- `log_std_init`: initial exploration noise of the PPO Gaussian policy
+  (SB3 default `0.0` = 1 m/s std per axis). Only applies to a new model.
+
+## Flight model
+
+Both backends execute one body-frame velocity command per drone per step,
+held for 1 s. Since the anti-sway rework the two behave the same way:
+
+- All alive drones fly their command **at the same time** (AirSim: every
+  `moveByVelocityBodyFrameAsync` is issued first, then all futures are joined;
+  the original code moved one drone after another with a blocking `join`).
+- **No stop between steps.** SimpleFlight keeps its last velocity setpoint, so
+  consecutive commands blend into a continuous flight; `World.move` ramps from
+  the carried-over velocity with the same first-order response
+  (`tau=0.25 s`). The original `moveByVelocityAsync(0,0,0)` after every step
+  made each drone accelerate from hover and brake again every second, which
+  is the lurching that was visible in UE4.
+- A drone receives an explicit hover only when its episode ends (collision,
+  success, timeout), so done drones stay parked.
+
+`tools/compare_dynamics.py` flies a few episodes with an *untrained* PPO under
+the old and the new flight model (no training involved) and writes
+`docs/dynamics_trajectories.png` and `docs/dynamics_velocity.png` plus a
+metrics table. With the old set-up most of the zig-zag is the policy itself:
+SB3's default `log_std_init=0` samples ±1 m/s lateral velocities every second,
+which is why `log_std_init` is exposed in `config.yml`.
+
 ## Browser visualization
 
 Set `viewer: true` (or construct the env with `render_mode="browser"`), then
@@ -115,9 +147,12 @@ constrained from below by the −8 m spawn altitude.
 - The arena is closed by an invisible ceiling (see above); collisions also
   cover the floor, the perimeter walls, every obstacle and drone-drone contact.
 - AirSim's SimpleFlight velocity ramp is modeled as a first-order response
-  (`tau=0.25 s`) inside `World.move`; collisions use a 0.35 m sphere swept in
-  10 substeps (no tunneling through the thin poles at 3 m/s). Done drones
-  stay parked in the arena and remain physical obstacles, as in AirSim.
+  (`tau=0.25 s`) inside `World.move`, starting from the velocity carried over
+  from the previous step (see [Flight model](#flight-model)); collisions use a
+  0.35 m sphere swept in 10 substeps (no tunneling through the thin poles at
+  3 m/s). Done drones stay parked in the arena and remain physical obstacles,
+  as in AirSim. Not modeled: the extra drift AirSim drones have while the
+  observations are being fetched between two commands (a wall-clock artifact).
 - Yaw is never commanded by the env (as in the original), so the body frame
   equals the world frame and the camera always faces +x.
 - A policy trained here is not expected to transfer zero-shot to the UE4 map

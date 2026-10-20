@@ -20,6 +20,7 @@ env = petting_zoo(
         viewer_port=config.get("viewer_port", 8777),
         verbose=config.get("verbose", False),
         samples=config.get("samples", 2),
+        prev_action_obs=config.get("prev_action_obs", False),
         )
 
 model = PPO.load("saved_policy/best_model", env=env)

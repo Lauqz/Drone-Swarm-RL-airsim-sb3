@@ -26,6 +26,17 @@ Differences from the AirSim variant (besides the backend):
   broken single-agent leftover); ``single_rgb`` is the parity-tested default.
 - ``num_vec_envs`` in the petting_zoo() wrapper allows multiple independent
   arenas (with AirSim this was pinned to 1 simulator).
+
+Flight model shared with the AirSim variant (both were changed together):
+
+- All alive drones execute their 1 s velocity command concurrently and no
+  stop follows; the velocity is carried into the next step (``World.move``
+  ramps from the previous velocity). A drone receives an explicit hover
+  (``World.stop``) only when its episode ends. This replaces the original
+  "move 1 s, join, command zero velocity" sequence that made drones lurch.
+- ``prev_action_obs=True`` adds the previously executed command as the
+  ``prev_act`` observation key (off by default to keep the obs space identical
+  to the old runs).
 """
 
 import math
@@ -70,6 +81,7 @@ class LocalDroneEnv(ParallelEnv, EzPickle):
                  viewer_port=8777,
                  verbose=False,
                  samples=2,
+                 prev_action_obs=False,
                  ):
         EzPickle.__init__(self,
                  image_shape=image_shape,
@@ -81,6 +93,7 @@ class LocalDroneEnv(ParallelEnv, EzPickle):
                  viewer_port=viewer_port,
                  verbose=verbose,
                  samples=samples,
+                 prev_action_obs=prev_action_obs,
                  )
 
         # Settings
@@ -88,6 +101,10 @@ class LocalDroneEnv(ParallelEnv, EzPickle):
         self.input_mode = input_mode
         self.num = num_drones
         self.verbose = verbose
+        # Optionally expose the previously executed velocity command as the
+        # "prev_act" observation key, so the policy can learn smooth motion.
+        self.prev_action_obs = prev_action_obs
+        self.prev_action = None
         # SuperSuit's MarkovVectorEnv reads this; PettingZoo expects it on every env.
         self.render_mode = render_mode
 
@@ -119,40 +136,45 @@ class LocalDroneEnv(ParallelEnv, EzPickle):
             self.viewer = DroneViewer(self.world.map_data, port=viewer_port)
         self._episode_count = 0
 
-        # Observation space
-        self.observation_spaces = gymnasium.spaces.Dict(
-                {
-                    id: gymnasium.spaces.Dict(
-                        {
-                            "cam": gymnasium.spaces.Box(
-                                low=0,
-                                high=255,
-                                shape=self.image_shape,
-                                dtype=np.uint8
-                            ),
-                            "pos": gymnasium.spaces.Box(
-                                low=-200.0,
-                                high=200.0,
-                                shape=(3,),
-                                dtype=np.float32
-                            )
-                        }
-                    )
-                    for id in self.possible_agents
-                }
-            )
-
-        # Action space
+        # Action space: body-frame velocity (vx, vy, vz) in m/s
+        self.action_low = np.array([0.0, -3.0, -3.0], dtype=np.float32)
+        self.action_high = np.array([3.0, 3.0, 3.0], dtype=np.float32)
         self.action_spaces = gymnasium.spaces.Dict(
                 {
                     id: gymnasium.spaces.Box(
-                        low=np.array([0.0, -3.0, -3.0]),
-                        high=np.array([3.0, 3.0, 3.0]),
+                        low=self.action_low,
+                        high=self.action_high,
                         shape=(3,),
                         dtype=np.float32
                     )
                     for id in self.possible_agents
                 }
+            )
+
+        # Observation space
+        obs_keys = {
+            "cam": gymnasium.spaces.Box(
+                low=0,
+                high=255,
+                shape=self.image_shape,
+                dtype=np.uint8
+            ),
+            "pos": gymnasium.spaces.Box(
+                low=-200.0,
+                high=200.0,
+                shape=(3,),
+                dtype=np.float32
+            )
+        }
+        if self.prev_action_obs:
+            obs_keys["prev_act"] = gymnasium.spaces.Box(
+                low=self.action_low,
+                high=self.action_high,
+                shape=(3,),
+                dtype=np.float32
+            )
+        self.observation_spaces = gymnasium.spaces.Dict(
+                {id: gymnasium.spaces.Dict(dict(obs_keys)) for id in self.possible_agents}
             )
 
         # Setup flight and set seed
@@ -176,10 +198,16 @@ class LocalDroneEnv(ParallelEnv, EzPickle):
         self.current_step += 1
         self.reward = {agent: (self.reward[agent] if self.done[agent] != 1 else 0) for agent in self.possible_agents}
 
-        for i in self.agents:
-            self.do_action(action[i], i)
+        # All alive drones fly their 1 s command at the same time
+        self.do_actions(action)
         obs, info = self.get_obs(self.done)
         self.reward, self.done = self.compute_reward(self.reward, self.done, action)
+
+        # Drones whose episode just ended get an explicit hover; the others
+        # keep their velocity until the next command.
+        for i in self.agents:
+            if self.done[i] == 1:
+                self.stop(i)
 
         # PettingZoo
         self.agents = [k for k in self.done.keys() if self.done[k] != 1]
@@ -247,6 +275,7 @@ class LocalDroneEnv(ParallelEnv, EzPickle):
 
         # PettingZoo parameters
         self.agents = self.possible_agents[:]
+        self.prev_action = {i: np.zeros(3, dtype=np.float32) for i in self.possible_agents}
 
         # Set x start and target
         self.agent_start_pos = 0
@@ -274,11 +303,20 @@ class LocalDroneEnv(ParallelEnv, EzPickle):
         # Get collision time stamp
         self.collision_time = {i: self.world.collision_stamp(i) for i in self.possible_agents}
 
-    def do_action(self, action, name):
-        # Execute action: body-frame velocity held for 1s, then hover
-        self.world.move(name,
-                        [float(action[0]), float(action[1]), float(action[2])],
-                        duration=1.0)
+    def do_actions(self, action):
+        # Body-frame velocity held for 1 s by every alive drone; the velocity
+        # is carried into the next step (no stop), like SimpleFlight keeping
+        # its last setpoint. The sim is instantaneous, so issuing the moves in
+        # sequence already equals the concurrent flight of the AirSim variant.
+        for name in self.agents:
+            a = np.clip(np.asarray(action[name], dtype=np.float32), self.action_low, self.action_high)
+            self.prev_action[name] = a
+            self.world.move(name, [float(a[0]), float(a[1]), float(a[2])], duration=1.0)
+
+    def stop(self, name):
+        # Explicit hover, sent only when a drone's episode ends.
+        self.world.stop(name)
+        self.prev_action[name] = np.zeros(3, dtype=np.float32)
 
     # Multi agent observations as list of single obs
     def get_obs(self, done):
@@ -301,26 +339,21 @@ class LocalDroneEnv(ParallelEnv, EzPickle):
                     self.obs_stack[:, :, 2]))
                 obs = np.expand_dims(obs, axis=2)
 
-            elif self.input_mode == "single_rgb":
+            elif self.input_mode in ("single_rgb", "depth"):
+                # Per-agent depth is properly multi-agent, unlike the original.
                 if done[i] != 1:
                     obs[i] = {}
-                    obs[i]['cam'] = self.get_rgb_image(i)
+                    obs[i]['cam'] = (self.get_rgb_image(i) if self.input_mode == "single_rgb"
+                                     else self.get_depth_image(i, thresh=3.4))
                     obs[i]['pos'] = np.array([x, y, z], dtype=np.float32)
+                    if self.prev_action_obs:
+                        obs[i]['prev_act'] = self.prev_action[i].copy()
                 else:
                     obs[i] = {}
                     obs[i]['cam'] = np.zeros((self.image_shape), dtype=np.uint8)
                     obs[i]['pos'] = np.zeros((3,), dtype=np.float32)
-
-            elif self.input_mode == "depth":
-                # Per-agent depth (properly multi-agent, unlike the original).
-                if done[i] != 1:
-                    obs[i] = {}
-                    obs[i]['cam'] = self.get_depth_image(i, thresh=3.4)
-                    obs[i]['pos'] = np.array([x, y, z], dtype=np.float32)
-                else:
-                    obs[i] = {}
-                    obs[i]['cam'] = np.zeros((self.image_shape), dtype=np.uint8)
-                    obs[i]['pos'] = np.zeros((3,), dtype=np.float32)
+                    if self.prev_action_obs:
+                        obs[i]['prev_act'] = np.zeros((3,), dtype=np.float32)
 
         if self.verbose:
             for i in obs:

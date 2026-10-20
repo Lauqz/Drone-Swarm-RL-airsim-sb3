@@ -32,19 +32,25 @@ class AirSimDroneEnv(ParallelEnv, EzPickle):
                  ip_address, 
                  image_shape, 
                  input_mode, 
-                 num_drones
+                 num_drones,
+                 prev_action_obs=False
                  ):
         EzPickle.__init__(self,  
                  ip_address = ip_address, 
                  image_shape = image_shape, 
                  input_mode = input_mode, 
-                 num_drones = num_drones
+                 num_drones = num_drones,
+                 prev_action_obs = prev_action_obs
                  )
         
         # Settings
         self.image_shape = image_shape
         self.input_mode = input_mode
         self.num = num_drones
+        # Optionally expose the previously executed velocity command as the
+        # "prev_act" observation key, so the policy can learn smooth motion.
+        self.prev_action_obs = prev_action_obs
+        self.prev_action = None
         # SuperSuit's MarkovVectorEnv reads this; PettingZoo expects it on every env.
         self.render_mode = None
 
@@ -63,41 +69,45 @@ class AirSimDroneEnv(ParallelEnv, EzPickle):
         self.max_steps = 100
         self.current_step = None
 
-        # Observation space
-        self.observation_spaces = gymnasium.spaces.Dict(
-                {
-                    id:gymnasium.spaces.Dict(
-                        {
-                            "cam":gymnasium.spaces.Box(
-                                low=0, 
-                                high=255, 
-                                shape=self.image_shape, 
-                                dtype=np.uint8
-                            ),
-                            "pos":gymnasium.spaces.Box(
-                                low=-200.0, 
-                                high=200.0, 
-                                shape=(3,), 
-                                dtype=np.float32
-                            )
-                        }
-                    )
-                    for id in self.possible_agents
-                }
-            )
-        
-
-        # Action space
+        # Action space: body-frame velocity (vx, vy, vz) in m/s
+        self.action_low = np.array([0.0, -3.0, -3.0], dtype=np.float32)
+        self.action_high = np.array([3.0, 3.0, 3.0], dtype=np.float32)
         self.action_spaces = gymnasium.spaces.Dict(
                 {
                     id:gymnasium.spaces.Box(
-                        low=np.array([0.0, -3.0, -3.0]),
-                        high=np.array([3.0, 3.0, 3.0]),
+                        low=self.action_low,
+                        high=self.action_high,
                         shape=(3,), 
                         dtype=np.float32
                     )
                     for id in self.possible_agents
                 }
+            )
+
+        # Observation space
+        obs_keys = {
+            "cam":gymnasium.spaces.Box(
+                low=0, 
+                high=255, 
+                shape=self.image_shape, 
+                dtype=np.uint8
+            ),
+            "pos":gymnasium.spaces.Box(
+                low=-200.0, 
+                high=200.0, 
+                shape=(3,), 
+                dtype=np.float32
+            )
+        }
+        if self.prev_action_obs:
+            obs_keys["prev_act"] = gymnasium.spaces.Box(
+                low=self.action_low,
+                high=self.action_high,
+                shape=(3,),
+                dtype=np.float32
+            )
+        self.observation_spaces = gymnasium.spaces.Dict(
+                {id:gymnasium.spaces.Dict(dict(obs_keys)) for id in self.possible_agents}
             )
         
         # Setup flight and set seed
@@ -121,10 +131,16 @@ class AirSimDroneEnv(ParallelEnv, EzPickle):
         self.current_step += 1
         self.reward = {agent:(self.reward[agent] if self.done[agent]!=1 else 0) for agent in self.possible_agents}
 
-        for i in self.agents:
-            self.do_action(action[i], i)
+        # All alive drones fly their 1 s command at the same time
+        self.do_actions(action)
         obs, info = self.get_obs(self.done)
         self.reward, self.done = self.compute_reward(self.reward, self.done, action)
+
+        # Drones whose episode just ended get an explicit hover; the others
+        # keep their velocity setpoint until the next command.
+        for i in self.agents:
+            if self.done[i] == 1:
+                self.stop(i)
 
         # PettingZoo
         self.agents = [k for k in self.done.keys() if self.done[k]!=1]
@@ -191,6 +207,7 @@ class AirSimDroneEnv(ParallelEnv, EzPickle):
 
         # PettingZoo parameters
         self.agents = self.possible_agents[:]
+        self.prev_action = {i: np.zeros(3, dtype=np.float32) for i in self.possible_agents}
 
         # For each drone
         for i in self.possible_agents:
@@ -225,13 +242,26 @@ class AirSimDroneEnv(ParallelEnv, EzPickle):
         self.collision_time = {i: self.drone.simGetCollisionInfo(vehicle_name=i).time_stamp for i in self.possible_agents}
 
 
-    def do_action(self, action, name):
-        # Execute action
-        self.drone.moveByVelocityBodyFrameAsync(
-            float(action[0]), float(action[1]), float(action[2]), duration=1, vehicle_name=name).join()
+    def do_actions(self, action):
+        # Issue every alive drone's command first, then wait for all of them,
+        # so the swarm flies concurrently instead of one drone after another.
+        # No stop command follows: SimpleFlight keeps the last velocity
+        # setpoint, so consecutive steps blend into a continuous flight and
+        # the next command simply replaces this one (see stop()).
+        futures = []
+        for name in self.agents:
+            a = np.clip(np.asarray(action[name], dtype=np.float32), self.action_low, self.action_high)
+            self.prev_action[name] = a
+            futures.append(self.drone.moveByVelocityBodyFrameAsync(
+                float(a[0]), float(a[1]), float(a[2]), duration=1, vehicle_name=name))
+        for f in futures:
+            f.join()
 
-        # Prevent swaying
+    def stop(self, name):
+        # Explicit hover, sent only when a drone's episode ends so that a done
+        # drone does not keep drifting with its last setpoint.
         self.drone.moveByVelocityAsync(vx=0, vy=0, vz=0, duration=1, vehicle_name=name)
+        self.prev_action[name] = np.zeros(3, dtype=np.float32)
 
     # Multi agent observations as list of single obs
     def get_obs(self,done):
@@ -259,10 +289,14 @@ class AirSimDroneEnv(ParallelEnv, EzPickle):
                     obs[i]={}
                     obs[i]['cam'] = self.get_rgb_image(i)
                     obs[i]['pos'] = np.array([x,y,z], dtype=np.float32)
+                    if self.prev_action_obs:
+                        obs[i]['prev_act'] = self.prev_action[i].copy()
                 else:
                     obs[i]={}
                     obs[i]['cam'] = np.zeros((self.image_shape), dtype=np.uint8)
                     obs[i]['pos'] = np.zeros((3,), dtype=np.float32)
+                    if self.prev_action_obs:
+                        obs[i]['prev_act'] = np.zeros((3,), dtype=np.float32)
 
             # Still to implement multi agent
             elif self.input_mode == "depth":

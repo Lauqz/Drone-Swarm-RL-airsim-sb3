@@ -23,7 +23,8 @@ env = petting_zoo(
         ip_address="127.0.0.1", 
         image_shape=image_shape,
         input_mode=config["train_mode"],
-        num_drones=config["num_drones"]
+        num_drones=config["num_drones"],
+        prev_action_obs=config.get("prev_action_obs", False)
         )
 
 model = PPO.load("saved_policy/best_model", env=env)

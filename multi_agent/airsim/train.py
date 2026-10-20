@@ -22,13 +22,16 @@ env = petting_zoo(
         ip_address="127.0.0.1", 
         image_shape=image_shape,
         input_mode=config["train_mode"],
-        num_drones=config["num_drones"]
+        num_drones=config["num_drones"],
+        prev_action_obs=config.get("prev_action_obs", False)
         )
 
 #check_env(env)
 
 policy_kwargs = dict(
-    features_extractor_class=CustomCombinedExtractor
+    features_extractor_class=CustomCombinedExtractor,
+    # Smaller initial exploration noise (SB3 default 0.0 = std 1 m/s per axis)
+    log_std_init=config.get("log_std_init", 0.0),
 )
 
 # New model
@@ -45,7 +48,9 @@ policy_kwargs = dict(
 #     policy_kwargs=policy_kwargs,
 # )
 
-# Continual learning to save msgpackrpc error
+# Continual learning to save msgpackrpc error.
+# NOTE: log_std is a learned parameter stored in the checkpoint, so
+# log_std_init from config.yml only affects a new model (block above).
 custom_objects = { 'learning_rate': 0.0001 } #0.00005, 0.00001
 model = PPO.load("saved_policy/best_model", custom_objects = custom_objects, tensorboard_log="tb_logs\ppo_run_map1_1696308625.3478022_1", env=env)
 

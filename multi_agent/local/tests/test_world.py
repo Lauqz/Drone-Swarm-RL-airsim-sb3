@@ -56,6 +56,39 @@ def test_move_without_obstacle_matches_ramp():
     assert w.collision_stamp("drone0") == 0
 
 
+def test_velocity_is_carried_between_commands():
+    # Second identical command starts at the velocity reached by the first,
+    # so it covers more ground than a command issued from rest.
+    w = make_world(tau=0.25)
+    w.set_pose("drone0", [0, 0, -4]); park_other(w)
+    w.move("drone0", [2.0, 0.0, 0.0], duration=1.0)
+    first = w.get_pose("drone0")[0]
+    assert w.get_velocity("drone0")[0] == pytest.approx(2.0 * (1 - math.exp(-4)), abs=1e-9)
+    w.move("drone0", [2.0, 0.0, 0.0], duration=1.0)
+    second = w.get_pose("drone0")[0] - first
+    assert second > first
+    assert second == pytest.approx(2.0, abs=0.05)
+
+
+def test_stop_and_teleport_zero_velocity():
+    w = make_world(tau=0.25)
+    w.set_pose("drone0", [0, 0, -4]); park_other(w)
+    w.move("drone0", [3.0, 1.0, 0.0], duration=1.0)
+    w.stop("drone0")
+    assert np.allclose(w.get_velocity("drone0"), 0.0)
+    w.move("drone0", [3.0, 0.0, 0.0], duration=1.0)
+    w.set_pose("drone0", [0, 0, -4])
+    assert np.allclose(w.get_velocity("drone0"), 0.0)
+
+
+def test_collision_zeroes_velocity():
+    w = make_world(tau=0.0)
+    w.set_pose("drone0", [8.0, 0, -4]); park_other(w)
+    w.move("drone0", [3.0, 0.0, 0.0], duration=1.0)   # into the pillar
+    assert w.collision_stamp("drone0") == 1
+    assert np.allclose(w.get_velocity("drone0"), 0.0)
+
+
 def test_pure_kinematics_when_tau_zero():
     w = make_world(tau=0.0)
     w.set_pose("drone0", [0, 0, -4]); park_other(w)

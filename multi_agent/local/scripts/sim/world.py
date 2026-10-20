@@ -8,7 +8,12 @@ Replicates the subset of AirSim behavior the training env relies on:
   env, so the body frame coincides with the world frame.
 - SimpleFlight does not reach the commanded velocity instantly; the ramp is
   modeled as a first-order response with time constant ``tau`` (set tau=0 for
-  pure kinematics).
+  pure kinematics). The response starts from the velocity the vehicle had at
+  the end of the previous command, not from rest: like SimpleFlight, a
+  vehicle keeps its last velocity setpoint between commands, so consecutive
+  ``move`` calls blend into one continuous flight. ``stop`` is the explicit
+  hover (``moveByVelocityAsync(0,0,0)``) the env sends when a drone's episode
+  ends; a collision also zeroes the velocity.
 - Collisions follow AirSim's ``simGetCollisionInfo().time_stamp`` semantics:
   ``collision_stamp`` returns a counter that changes when a new collision
   happens and stays changed afterwards, so comparing against a baseline taken
@@ -97,6 +102,7 @@ class World:
         self._add_pilasters(map_data.get("pilasters"), self.arena)
 
         self.positions = {n: np.zeros(3) for n in self.drone_names}
+        self.velocities = {n: np.zeros(3) for n in self.drone_names}
         self._collision_counter = {n: 0 for n in self.drone_names}
 
     # ------------------------------------------------------- map expansion
@@ -152,13 +158,24 @@ class World:
     def reset(self):
         for n in self.drone_names:
             self.positions[n] = np.zeros(3)
+            self.velocities[n] = np.zeros(3)
 
     def set_pose(self, name, pos):
-        """Teleport, ignoring collisions (simSetVehiclePose ignore_collision)."""
+        """Teleport, ignoring collisions (simSetVehiclePose ignore_collision).
+        A teleported vehicle starts at rest."""
         self.positions[name] = np.asarray(pos, dtype=np.float64).copy()
+        self.velocities[name] = np.zeros(3)
 
     def get_pose(self, name):
         return self.positions[name].copy()
+
+    def get_velocity(self, name):
+        """Velocity at the end of the last command (the carried-over state)."""
+        return self.velocities[name].copy()
+
+    def stop(self, name):
+        """Explicit hover: the setpoint the env sends once a drone is done."""
+        self.velocities[name] = np.zeros(3)
 
     def get_object_pose(self, name):
         return np.asarray(self.objects[name]["pos"], dtype=np.float64).copy()
@@ -168,26 +185,48 @@ class World:
 
     def move(self, name, velocity, duration=1.0):
         """Hold a body-frame velocity for `duration` seconds (yaw is 0, so the
-        body frame equals the world frame). Stops at the first collision."""
-        v = np.asarray(velocity, dtype=np.float64)
+        body frame equals the world frame). The velocity response is
+        v(t) = v_cmd + (v_prev - v_cmd) e^{-t/tau}, starting from the velocity
+        carried over from the previous command, and the final velocity is
+        carried into the next call. Stops (and zeroes the velocity) at the
+        first collision."""
+        v_cmd = np.asarray(velocity, dtype=np.float64)
+        v_prev = self.velocities[name]
         pos = self.positions[name]
         dt = duration / self.substeps
+        t_end = duration
         for k in range(self.substeps):
-            step = v * self._ramp_integral(k * dt, (k + 1) * dt)
+            t0, t1 = k * dt, (k + 1) * dt
+            # integral of v(t) over [t0, t1]
+            step = v_cmd * (t1 - t0) + (v_prev - v_cmd) * self._decay_integral(t0, t1)
             candidate = pos + step
             if self._collides(name, candidate):
                 self._collision_counter[name] += 1
-                break
+                self.velocities[name] = np.zeros(3)
+                self.positions[name] = pos
+                return
             pos = candidate
         self.positions[name] = pos
+        self.velocities[name] = v_cmd + (v_prev - v_cmd) * self._decay(t_end)
 
     # ----------------------------------------------------------------- guts
-    def _ramp_integral(self, t0, t1):
-        """Integral of the velocity fraction (1 - e^{-t/tau}) over [t0, t1]."""
+    def _decay(self, t):
+        """e^{-t/tau} (0 for pure kinematics)."""
         if self.tau <= 0.0:
-            return t1 - t0
+            return 0.0
+        return math.exp(-t / self.tau)
+
+    def _decay_integral(self, t0, t1):
+        """Integral of e^{-t/tau} over [t0, t1] (0 for pure kinematics)."""
+        if self.tau <= 0.0:
+            return 0.0
         tau = self.tau
-        return (t1 - t0) + tau * (math.exp(-t1 / tau) - math.exp(-t0 / tau))
+        return tau * (math.exp(-t0 / tau) - math.exp(-t1 / tau))
+
+    def _ramp_integral(self, t0, t1):
+        """Integral of the from-rest velocity fraction (1 - e^{-t/tau}) over
+        [t0, t1]. Kept for tests/tools that reason about a single command."""
+        return (t1 - t0) - self._decay_integral(t0, t1)
 
     def _collides(self, name, p):
         r = self.drone_radius

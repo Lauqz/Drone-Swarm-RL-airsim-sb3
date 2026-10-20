@@ -184,3 +184,45 @@ def test_episode_is_deterministic_given_global_seed():
         return total
 
     assert rollout() == rollout()
+
+
+# ------------------------------------------------------ flight model changes
+def test_prev_action_obs_off_by_default(env2):
+    assert "prev_act" not in env2.observation_space("drone0").spaces
+    obs, _ = env2.reset()
+    assert "prev_act" not in obs["drone0"]
+
+
+def test_prev_action_obs_key():
+    from scripts.local_env import LocalDroneEnv
+    e = LocalDroneEnv(image_shape=(84, 84, 3), input_mode="single_rgb",
+                      num_drones=2, samples=1, prev_action_obs=True)
+    sp = e.observation_space("drone0")["prev_act"]
+    assert sp.shape == (3,) and sp.dtype == np.float32
+    assert np.allclose(sp.low, [0, -3, -3]) and np.allclose(sp.high, [3, 3, 3])
+    obs, _ = e.reset()
+    assert (obs["drone0"]["prev_act"] == 0).all()
+    a = {"drone0": np.array([1.0, 0.5, -0.2], np.float32),
+         "drone1": np.array([5.0, -9.0, 0.0], np.float32)}   # out of bounds
+    obs, *_ = e.step(a)
+    for n in obs:
+        if e.done[n] != 1:
+            expected = np.clip(a[n], sp.low, sp.high)
+            assert np.allclose(obs[n]["prev_act"], expected)
+        else:
+            assert (obs[n]["prev_act"] == 0).all()
+
+
+def test_velocity_carries_across_env_steps(env2):
+    env2.reset()
+    for n in env2.possible_agents:
+        env2.world.set_pose(n, [0, 0 if n == "drone0" else 15, -4])
+    env2.target_dist_prev = 1.0
+    a = {n: np.array([2.0, 0.0, 0.0], np.float32) for n in env2.possible_agents}
+    env2.step(a)
+    assert env2.world.get_velocity("drone0")[0] > 1.9
+    env2.step(a)
+    # done drones are stopped explicitly
+    for n in env2.possible_agents:
+        if env2.done[n] == 1:
+            assert np.allclose(env2.world.get_velocity(n), 0.0)

@@ -20,3 +20,13 @@ samples: 2
 
 # Print the per-step debug dump like the AirSim env did.
 verbose: false
+
+# ---- shared with the AirSim variant ----
+# Observation: add the previously executed velocity command as "prev_act".
+# Off by default so the observation space matches the old runs/saved policies.
+prev_action_obs: false
+
+# PPO exploration: initial log standard deviation of the Gaussian policy
+# (SB3 default is 0.0 -> std 1 m/s on each velocity axis, which makes an
+# untrained swarm zig-zag). -1.0 -> std ~0.37 m/s. Only applies to a new model.
+log_std_init: -1.0

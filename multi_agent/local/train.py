@@ -23,10 +23,13 @@ env = petting_zoo(
         viewer_port=config.get("viewer_port", 8777),
         verbose=config.get("verbose", False),
         samples=config.get("samples", 2),
+        prev_action_obs=config.get("prev_action_obs", False),
         )
 
 policy_kwargs = dict(
-    features_extractor_class=CustomCombinedExtractor
+    features_extractor_class=CustomCombinedExtractor,
+    # Smaller initial exploration noise (SB3 default 0.0 = std 1 m/s per axis)
+    log_std_init=config.get("log_std_init", 0.0),
 )
 
 # New model (same hyperparameters as the AirSim variant; device="auto" so the
